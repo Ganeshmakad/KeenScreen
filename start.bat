@@ -16,13 +16,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$repoOwner = 'Ganeshmakad'; " ^
   "$repoName  = 'KeenScreen'; " ^
   "$branch    = 'main'; " ^
-  "$workDir   = '%~dp0'.TrimEnd('\'); " ^
+  "$workDir   = (Get-Location).Path; " ^
   "$syncFile  = Join-Path $workDir '.sync_commit'; " ^
   "$reqHashFile = Join-Path $workDir '.sync_req_hash'; " ^
-  "Write-Host '[KeenScreen Auto-Sync] Checking https://github.com/' + $repoOwner + '/' + $repoName + ' for updates...' -ForegroundColor Cyan; " ^
+  "Write-Host ('[KeenScreen Auto-Sync] Checking https://github.com/' + $repoOwner + '/' + $repoName + ' for updates...') -ForegroundColor Cyan; " ^
   "try { " ^
   "  $headers = @{ 'User-Agent' = 'KeenScreen-AutoSync/1.2'; 'Cache-Control' = 'no-cache' }; " ^
-  "  $apiUrl  = \"https://api.github.com/repos/$repoOwner/$repoName/commits/$branch\"; " ^
+  "  $apiUrl  = 'https://api.github.com/repos/' + $repoOwner + '/' + $repoName + '/commits/' + $branch; " ^
   "  $commitResp = Invoke-RestMethod -Uri $apiUrl -Headers $headers -TimeoutSec 6; " ^
   "  $remoteSha  = $commitResp.sha; " ^
   "  $localSha   = if (Test-Path $syncFile) { (Get-Content $syncFile -Raw).Trim() } else { '' }; " ^
@@ -31,12 +31,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "    Write-Host ('[KeenScreen Auto-Sync] Update detected (' + $remoteSha.Substring(0,7) + '). Syncing latest files...') -ForegroundColor Yellow; " ^
   "    $files = @('keyer_engine.py','app_gui.py','cli.py','requirements.txt','Launch_GUI.bat','Launch_GUI_Silent.vbs','setup.bat','version.json'); " ^
   "    try { " ^
-  "      $verUrl = \"https://raw.githubusercontent.com/$repoOwner/$repoName/$branch/version.json?cb=\" + [Guid]::NewGuid().ToString('N'); " ^
+  "      $verUrl = 'https://raw.githubusercontent.com/' + $repoOwner + '/' + $repoName + '/' + $branch + '/version.json?cb=' + [Guid]::NewGuid().ToString('N'); " ^
   "      $verObj = Invoke-RestMethod -Uri $verUrl -Headers $headers -TimeoutSec 5; " ^
   "      if ($verObj.tracked_files) { $files = $verObj.tracked_files } " ^
   "    } catch {} " ^
   "    foreach ($f in $files) { " ^
-  "      $rawUrl = \"https://raw.githubusercontent.com/$repoOwner/$repoName/$branch/$f?cb=\" + [Guid]::NewGuid().ToString('N'); " ^
+  "      $rawUrl = 'https://raw.githubusercontent.com/' + $repoOwner + '/' + $repoName + '/' + $branch + '/' + $f + '?cb=' + [Guid]::NewGuid().ToString('N'); " ^
   "      $tmpDst = Join-Path $workDir ($f + '.tmp_sync'); " ^
   "      $finalDst = Join-Path $workDir $f; " ^
   "      Invoke-WebRequest -Uri $rawUrl -Headers $headers -OutFile $tmpDst -UseBasicParsing -TimeoutSec 10; " ^
@@ -61,8 +61,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "    Write-Host ('[KeenScreen Auto-Sync] Up to date (' + $remoteSha.Substring(0,7) + ').') -ForegroundColor Green; " ^
   "  } " ^
   "} catch { " ^
-  "  Write-Host ('[KeenScreen Auto-Sync] Offline or repo not yet populated (' + $_.Exception.Message + '). Using local version.') -ForegroundColor DarkYellow; " ^
+  "  Write-Host ('[KeenScreen Auto-Sync] Offline or repo unreachable (' + $_.Exception.Message + '). Launching local version.') -ForegroundColor DarkYellow; " ^
   "}"
+
+if "%KEENSCREEN_NO_GUI%"=="1" exit /b 0
 
 :: Launch the GUI completely silently in the background (zero console window open during work)
 if exist "%~dp0Launch_GUI_Silent.vbs" (
