@@ -1,0 +1,17 @@
+{
+  "app_name": "KeenScreen Studio Green Screen Remover",
+  "version": "1.2.0",
+  "repo_url": "https://github.com/Ganeshmakad/KeenScreen",
+  "branch": "main",
+  "updated_at": "2026-10-18T03:53:00+05:30",
+  "tracked_files": [
+    "keyer_engine.py",
+    "app_gui.py",
+    "cli.py",
+    "requirements.txt",
+    "Launch_GUI.bat",
+    "Launch_GUI_Silent.vbs",
+    "setup.bat",
+    "version.json"
+  ]
+}

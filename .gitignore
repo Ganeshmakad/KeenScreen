@@ -1,0 +1,22 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local sync state
+.sync_commit
+.sync_req_hash
+.sync_temp/
+*.tmp_sync
+
+# Video files & temporary render artifacts
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.avi
+*.m4v
+*.tmp_part*
+
+# Packaged archives
+*.zip
