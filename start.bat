@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
-title KeenScreen Studio — Auto-Syncing & Launching...
+title KeenScreen Studio - Auto-Syncing and Launching...
 
 :: ============================================================================
 :: KeenScreen Studio — Injected PowerShell Auto-Sync from Public GitHub Repo
@@ -18,7 +18,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$branch    = 'main'; " ^
   "$workDir   = (Get-Location).Path; " ^
   "$syncFile  = Join-Path $workDir '.sync_commit'; " ^
-  "$reqHashFile = Join-Path $workDir '.sync_req_hash'; " ^
   "Write-Host ('[KeenScreen Auto-Sync] Checking https://github.com/' + $repoOwner + '/' + $repoName + ' for updates...') -ForegroundColor Cyan; " ^
   "try { " ^
   "  $headers = @{ 'User-Agent' = 'KeenScreen-AutoSync/1.2'; 'Cache-Control' = 'no-cache' }; " ^
@@ -47,12 +46,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "    } " ^
   "    $reqPath = Join-Path $workDir 'requirements.txt'; " ^
   "    if (Test-Path $reqPath) { " ^
-  "      $newHash = (Get-FileHash $reqPath -Algorithm SHA256).Hash; " ^
-  "      $oldHash = if (Test-Path $reqHashFile) { (Get-Content $reqHashFile -Raw).Trim() } else { '' }; " ^
-  "      if ($newHash -ne $oldHash) { " ^
-  "        Write-Host '[KeenScreen Auto-Sync] Updating Python packages...' -ForegroundColor Yellow; " ^
+  "      & python -c 'import cv2, numpy, PIL' 2>$null; " ^
+  "      if ($LASTEXITCODE -ne 0) { " ^
+  "        Write-Host '[KeenScreen Auto-Sync] Installing missing Python packages...' -ForegroundColor Yellow; " ^
   "        & python -m pip install -r $reqPath --quiet; " ^
-  "        Set-Content -Path $reqHashFile -Value $newHash -NoNewline; " ^
   "      } " ^
   "    } " ^
   "    Set-Content -Path $syncFile -Value $remoteSha -NoNewline; " ^
