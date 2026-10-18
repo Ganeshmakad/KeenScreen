@@ -6,8 +6,8 @@ title KeenScreen Studio - Auto-Syncing and Launching...
 :: ============================================================================
 :: KeenScreen Studio — Injected PowerShell Auto-Sync from Public GitHub Repo
 :: Repo: https://github.com/Ganeshmakad/KeenScreen
-:: Checks GitHub on every launch, pulls any code updates automatically
-:: (even on PCs without Git installed!), and then launches GUI or CLI.
+:: Uses api.github.com (never blocked by ISP DNS throttling on raw.githubusercontent)
+:: to check and pull any code updates automatically, then launches GUI or CLI.
 :: ============================================================================
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -21,6 +21,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Write-Host ('[KeenScreen Auto-Sync] Checking https://github.com/' + $repoOwner + '/' + $repoName + ' for updates...') -ForegroundColor Cyan; " ^
   "try { " ^
   "  $headers = @{ 'User-Agent' = 'KeenScreen-AutoSync/1.3'; 'Cache-Control' = 'no-cache' }; " ^
+  "  $rawHeaders = @{ 'User-Agent' = 'KeenScreen-AutoSync/1.3'; 'Accept' = 'application/vnd.github.v3.raw'; 'Cache-Control' = 'no-cache' }; " ^
   "  $apiUrl  = 'https://api.github.com/repos/' + $repoOwner + '/' + $repoName + '/commits/' + $branch; " ^
   "  $commitResp = Invoke-RestMethod -Uri $apiUrl -Headers $headers -TimeoutSec 6; " ^
   "  $remoteSha  = $commitResp.sha; " ^
@@ -30,15 +31,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "    Write-Host ('[KeenScreen Auto-Sync] Update detected (' + $remoteSha.Substring(0,7) + '). Syncing latest files...') -ForegroundColor Yellow; " ^
   "    $files = @('keyer_engine.py','app_gui.py','cli.py','requirements.txt','Launch_GUI.bat','Launch_GUI_Silent.vbs','Launch_CLI.bat','setup.bat','version.json'); " ^
   "    try { " ^
-  "      $verUrl = 'https://raw.githubusercontent.com/' + $repoOwner + '/' + $repoName + '/' + $branch + '/version.json?cb=' + [Guid]::NewGuid().ToString('N'); " ^
-  "      $verObj = Invoke-RestMethod -Uri $verUrl -Headers $headers -TimeoutSec 5; " ^
+  "      $verUrl = 'https://api.github.com/repos/' + $repoOwner + '/' + $repoName + '/contents/version.json?ref=' + $remoteSha; " ^
+  "      $verObj = Invoke-RestMethod -Uri $verUrl -Headers $rawHeaders -TimeoutSec 6; " ^
   "      if ($verObj.tracked_files) { $files = $verObj.tracked_files } " ^
   "    } catch {} " ^
   "    foreach ($f in $files) { " ^
-  "      $rawUrl = 'https://raw.githubusercontent.com/' + $repoOwner + '/' + $repoName + '/' + $branch + '/' + $f + '?cb=' + [Guid]::NewGuid().ToString('N'); " ^
+  "      $fileUrl = 'https://api.github.com/repos/' + $repoOwner + '/' + $repoName + '/contents/' + $f + '?ref=' + $remoteSha; " ^
   "      $tmpDst = Join-Path $workDir ($f + '.tmp_sync'); " ^
   "      $finalDst = Join-Path $workDir $f; " ^
-  "      Invoke-WebRequest -Uri $rawUrl -Headers $headers -OutFile $tmpDst -UseBasicParsing -TimeoutSec 10; " ^
+  "      Invoke-WebRequest -Uri $fileUrl -Headers $rawHeaders -OutFile $tmpDst -UseBasicParsing -TimeoutSec 10; " ^
   "      if ((Test-Path $tmpDst) -and ((Get-Item $tmpDst).Length -gt 0)) { " ^
   "        Move-Item -Path $tmpDst -Destination $finalDst -Force; " ^
   "        Write-Host ('  -> Updated ' + $f) -ForegroundColor Green; " ^
