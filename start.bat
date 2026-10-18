@@ -7,7 +7,7 @@ title KeenScreen Studio - Auto-Syncing and Launching...
 :: KeenScreen Studio — Injected PowerShell Auto-Sync from Public GitHub Repo
 :: Repo: https://github.com/Ganeshmakad/KeenScreen
 :: Checks GitHub on every launch, pulls any code updates automatically
-:: (even on PCs without Git installed!), and then launches the GUI silently.
+:: (even on PCs without Git installed!), and then launches GUI or CLI.
 :: ============================================================================
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -20,15 +20,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$syncFile  = Join-Path $workDir '.sync_commit'; " ^
   "Write-Host ('[KeenScreen Auto-Sync] Checking https://github.com/' + $repoOwner + '/' + $repoName + ' for updates...') -ForegroundColor Cyan; " ^
   "try { " ^
-  "  $headers = @{ 'User-Agent' = 'KeenScreen-AutoSync/1.2'; 'Cache-Control' = 'no-cache' }; " ^
+  "  $headers = @{ 'User-Agent' = 'KeenScreen-AutoSync/1.3'; 'Cache-Control' = 'no-cache' }; " ^
   "  $apiUrl  = 'https://api.github.com/repos/' + $repoOwner + '/' + $repoName + '/commits/' + $branch; " ^
   "  $commitResp = Invoke-RestMethod -Uri $apiUrl -Headers $headers -TimeoutSec 6; " ^
   "  $remoteSha  = $commitResp.sha; " ^
   "  $localSha   = if (Test-Path $syncFile) { (Get-Content $syncFile -Raw).Trim() } else { '' }; " ^
-  "  $coreExists = (Test-Path (Join-Path $workDir 'keyer_engine.py')) -and (Test-Path (Join-Path $workDir 'app_gui.py')); " ^
+  "  $coreExists = (Test-Path (Join-Path $workDir 'keyer_engine.py')) -and (Test-Path (Join-Path $workDir 'app_gui.py')) -and (Test-Path (Join-Path $workDir 'cli.py')); " ^
   "  if (($remoteSha -ne $localSha) -or (-not $coreExists)) { " ^
   "    Write-Host ('[KeenScreen Auto-Sync] Update detected (' + $remoteSha.Substring(0,7) + '). Syncing latest files...') -ForegroundColor Yellow; " ^
-  "    $files = @('keyer_engine.py','app_gui.py','cli.py','requirements.txt','Launch_GUI.bat','Launch_GUI_Silent.vbs','setup.bat','version.json'); " ^
+  "    $files = @('keyer_engine.py','app_gui.py','cli.py','requirements.txt','Launch_GUI.bat','Launch_GUI_Silent.vbs','Launch_CLI.bat','setup.bat','version.json'); " ^
   "    try { " ^
   "      $verUrl = 'https://raw.githubusercontent.com/' + $repoOwner + '/' + $repoName + '/' + $branch + '/version.json?cb=' + [Guid]::NewGuid().ToString('N'); " ^
   "      $verObj = Invoke-RestMethod -Uri $verUrl -Headers $headers -TimeoutSec 5; " ^
@@ -62,6 +62,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "}"
 
 if "%KEENSCREEN_NO_GUI%"=="1" exit /b 0
+
+if /i "%~1"=="--cli" (
+    shift
+    python "%~dp0cli.py" %1 %2 %3 %4 %5 %6 %7 %8 %9
+    exit /b %errorlevel%
+)
 
 :: Launch the GUI completely silently in the background (zero console window open during work)
 if exist "%~dp0Launch_GUI_Silent.vbs" (
