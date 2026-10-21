@@ -112,19 +112,48 @@ class GreenScreenApp(tk.Tk):
         right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, ipadx=10, ipady=8)
 
         # --- LEFT PANEL ---
+        # Anchor Action Buttons + Progress Bar at the bottom FIRST so they are NEVER clipped
+        bottom_dock = ttk.Frame(left_panel, style="Card.TFrame")
+        bottom_dock.pack(side=tk.BOTTOM, fill=tk.X, padx=12, pady=(4, 6))
+
+        action_row = ttk.Frame(bottom_dock, style="Card.TFrame")
+        action_row.pack(fill=tk.X, pady=(2, 4))
+        self.run_btn = ttk.Button(
+            action_row,
+            text="Start / Resume Turbo Processing",
+            style="Accent.TButton",
+            command=self._start_processing,
+        )
+        self.run_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5)
+
+        self.stop_btn = ttk.Button(
+            action_row,
+            text="Stop Safely",
+            state=tk.DISABLED,
+            command=self._request_stop,
+        )
+        self.stop_btn.pack(side=tk.RIGHT, padx=(6, 0), ipady=5)
+
+        self.progress = ttk.Progressbar(bottom_dock, orient=tk.HORIZONTAL, length=100, mode="determinate")
+        self.progress.pack(fill=tk.X, pady=(2, 4))
+
+        ttk.Button(bottom_dock, text="Open Video Folder in Explorer", command=self._open_output_folder).pack(
+            fill=tk.X, pady=(0, 2)
+        )
+
         ttk.Label(
             left_panel,
             text="1. Select Video or Bulk Folder (Saves in Same Folder)",
             font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w", padx=12, pady=(6, 4))
+        ).pack(anchor="w", padx=12, pady=(4, 2))
 
         in_row = ttk.Frame(left_panel, style="Card.TFrame")
-        in_row.pack(fill=tk.X, padx=12, pady=2)
+        in_row.pack(fill=tk.X, padx=12, pady=1)
         in_entry = ttk.Entry(in_row, textvariable=self.input_path_var)
         in_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         btn_row = ttk.Frame(left_panel, style="Card.TFrame")
-        btn_row.pack(fill=tk.X, padx=12, pady=(4, 2))
+        btn_row.pack(fill=tk.X, padx=12, pady=(3, 1))
         ttk.Button(btn_row, text="Select Single Video...", command=self._browse_single_video).pack(
             side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4)
         )
@@ -137,23 +166,23 @@ class GreenScreenApp(tk.Tk):
             text="Include subfolders when uploading a folder",
             variable=self.recursive_var,
             command=self._refresh_folder_if_dir,
-        ).pack(anchor="w", padx=14, pady=(2, 1))
+        ).pack(anchor="w", padx=14, pady=(1, 0))
 
         ttk.Checkbutton(
             left_panel,
             text="Smart Resume: Skip already-completed videos (Saves resources)",
             variable=self.skip_completed_var,
             command=self._refresh_queue_badges,
-        ).pack(anchor="w", padx=14, pady=(0, 4))
+        ).pack(anchor="w", padx=14, pady=(0, 2))
 
         self.queue_label = ttk.Label(left_panel, text="Queued Videos (0):", font=("Segoe UI", 9, "bold"))
-        self.queue_label.pack(anchor="w", padx=12, pady=(2, 2))
+        self.queue_label.pack(anchor="w", padx=12, pady=(1, 1))
 
         q_frame = ttk.Frame(left_panel, style="Card.TFrame")
-        q_frame.pack(fill=tk.X, padx=12, pady=2)
+        q_frame.pack(fill=tk.X, padx=12, pady=1)
         self.queue_listbox = tk.Listbox(
             q_frame,
-            height=4,
+            height=3,
             bg="#141820",
             fg="#e6edf3",
             selectbackground="#1f6feb",
@@ -171,58 +200,70 @@ class GreenScreenApp(tk.Tk):
             left_panel,
             text="2. Select Output Format(s) (Quick Preset or Custom Checkboxes)",
             font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w", padx=12, pady=(8, 2))
+        ).pack(anchor="w", padx=12, pady=(5, 1))
 
-        preset_row = ttk.Frame(left_panel, style="Card.TFrame")
-        preset_row.pack(fill=tk.X, padx=14, pady=(0, 3))
+        preset_row1 = ttk.Frame(left_panel, style="Card.TFrame")
+        preset_row1.pack(fill=tk.X, padx=14, pady=(0, 1))
         for lbl, val in [
             ("Both (.MOV+.WEBM)", "both"),
             ("Only .MOV", "mov_only"),
             ("Only .WEBM", "webm_only"),
-            ("Only .WEBP", "webp_only"),
-            ("Only .MP4", "mp4_only"),
         ]:
             ttk.Radiobutton(
-                preset_row,
+                preset_row1,
                 text=lbl,
                 value=val,
                 variable=self.quick_format_var,
                 command=self._on_quick_format_selected,
-            ).pack(side=tk.LEFT, padx=(0, 6))
+            ).pack(side=tk.LEFT, padx=(0, 10))
+
+        preset_row2 = ttk.Frame(left_panel, style="Card.TFrame")
+        preset_row2.pack(fill=tk.X, padx=14, pady=(0, 2))
+        for lbl, val in [
+            ("Only .WEBP", "webp_only"),
+            ("Only .MP4", "mp4_only"),
+        ]:
+            ttk.Radiobutton(
+                preset_row2,
+                text=lbl,
+                value=val,
+                variable=self.quick_format_var,
+                command=self._on_quick_format_selected,
+            ).pack(side=tk.LEFT, padx=(0, 10))
 
         ttk.Checkbutton(
             left_panel,
             text="Transparent .MOV (QuickTime PNG RGBA — Fast Lossless for Camtasia)",
             variable=self.export_mov_var,
             command=self._on_custom_format_checked,
-        ).pack(anchor="w", padx=16, pady=1)
+        ).pack(anchor="w", padx=16, pady=0)
         ttk.Checkbutton(
             left_panel,
             text="Transparent .WEBM (VP9 Alpha — Fast Realtime for Web / OBS)",
             variable=self.export_webm_var,
             command=self._on_custom_format_checked,
-        ).pack(anchor="w", padx=16, pady=1)
+        ).pack(anchor="w", padx=16, pady=0)
         ttk.Checkbutton(
             left_panel,
             text="Transparent .WEBP (Animated Transparent WebP)",
             variable=self.export_webp_var,
             command=self._on_custom_format_checked,
-        ).pack(anchor="w", padx=16, pady=1)
+        ).pack(anchor="w", padx=16, pady=0)
         ttk.Checkbutton(
             left_panel,
             text="Composited .MP4 (Over Static Image, Dynamic Video, or Studio BG)",
             variable=self.export_mp4_var,
             command=self._on_custom_format_checked,
-        ).pack(anchor="w", padx=16, pady=1)
+        ).pack(anchor="w", padx=16, pady=(0, 1))
 
         # 3. Optional Background Image / Video
         ttk.Label(
             left_panel,
             text="3. Optional Background Image/Video (for .MP4 or Preview)",
             font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w", padx=12, pady=(6, 2))
+        ).pack(anchor="w", padx=12, pady=(4, 1))
         bg_row = ttk.Frame(left_panel, style="Card.TFrame")
-        bg_row.pack(fill=tk.X, padx=12, pady=2)
+        bg_row.pack(fill=tk.X, padx=12, pady=1)
         bg_entry = ttk.Entry(bg_row, textvariable=self.bg_source_var)
         bg_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
         ttk.Button(bg_row, text="Browse...", command=self._browse_bg).pack(side=tk.RIGHT)
@@ -232,17 +273,17 @@ class GreenScreenApp(tk.Tk):
             left_panel,
             text="4. Per-Video Adaptive Green & Outline Choke",
             font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w", padx=12, pady=(6, 2))
+        ).pack(anchor="w", padx=12, pady=(4, 1))
 
         ttk.Checkbutton(
             left_panel,
             text="Auto-Adapt to Each Video's Green Screen Colour (Recommended)",
             variable=self.auto_adapt_var,
             command=self._update_preview,
-        ).pack(anchor="w", padx=16, pady=(2, 4))
+        ).pack(anchor="w", padx=16, pady=(1, 2))
 
         swatch_row = ttk.Frame(left_panel, style="Card.TFrame")
-        swatch_row.pack(fill=tk.X, padx=16, pady=(0, 4))
+        swatch_row.pack(fill=tk.X, padx=16, pady=(0, 2))
         self.color_swatch = tk.Label(swatch_row, text="   ", bg="#15F120", relief=tk.SOLID, borderwidth=1)
         self.color_swatch.pack(side=tk.LEFT, padx=(0, 8))
         ttk.Label(swatch_row, textvariable=self.profile_info_var, font=("Consolas", 9)).pack(side=tk.LEFT)
@@ -257,7 +298,7 @@ class GreenScreenApp(tk.Tk):
             variable=self.choke_var,
             command=lambda _: self._update_preview(),
         )
-        self.choke_scale.pack(fill=tk.X, padx=16, pady=(1, 3))
+        self.choke_scale.pack(fill=tk.X, padx=16, pady=(0, 2))
 
         ttk.Label(left_panel, text="Background Green Floor (Auto-Scaled per video):").pack(anchor="w", padx=16)
         self.floor_scale = ttk.Scale(
@@ -267,7 +308,7 @@ class GreenScreenApp(tk.Tk):
             variable=self.bg_floor_var,
             command=lambda _: self._update_preview(),
         )
-        self.floor_scale.pack(fill=tk.X, padx=16, pady=(1, 3))
+        self.floor_scale.pack(fill=tk.X, padx=16, pady=(0, 2))
 
         ttk.Label(left_panel, text="Green Spill Suppression Strength (Default: 1.0):").pack(anchor="w", padx=16)
         self.despill_scale = ttk.Scale(
@@ -277,33 +318,7 @@ class GreenScreenApp(tk.Tk):
             variable=self.despill_var,
             command=lambda _: self._update_preview(),
         )
-        self.despill_scale.pack(fill=tk.X, padx=16, pady=(1, 3))
-
-        # 5. Action Buttons + Progress Bar
-        action_row = ttk.Frame(left_panel, style="Card.TFrame")
-        action_row.pack(fill=tk.X, padx=12, pady=(6, 4))
-        self.run_btn = ttk.Button(
-            action_row,
-            text="Start / Resume Turbo Processing",
-            style="Accent.TButton",
-            command=self._start_processing,
-        )
-        self.run_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5)
-
-        self.stop_btn = ttk.Button(
-            action_row,
-            text="Stop Safely",
-            state=tk.DISABLED,
-            command=self._request_stop,
-        )
-        self.stop_btn.pack(side=tk.RIGHT, padx=(6, 0), ipady=5)
-
-        self.progress = ttk.Progressbar(left_panel, orient=tk.HORIZONTAL, length=100, mode="determinate")
-        self.progress.pack(fill=tk.X, padx=12, pady=(2, 6))
-
-        ttk.Button(left_panel, text="Open Video Folder in Explorer", command=self._open_output_folder).pack(
-            fill=tk.X, padx=12, pady=2
-        )
+        self.despill_scale.pack(fill=tk.X, padx=16, pady=(0, 2))
 
         # --- RIGHT PANEL ---
         preview_top = ttk.Frame(right_panel, style="Card.TFrame")
