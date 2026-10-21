@@ -1,11 +1,14 @@
 """
-Automatic Green Screen Remover & Compositor — Desktop GUI Application
+KeenScreen Studio Green Screen Remover & Compositor — VERSION 2.0 (High-Speed Turbo Desktop GUI)
 Includes:
+  - V2 Turbo Engine (Sparse Edge-Band Keying + Multi-Core Parallel Frame Pipeline + Fast Lossless FFmpeg)
+  - Flexible Output Format Selector:
+      • Quick Mode: [Both .MOV + .WEBM] | [Only .MOV] | [Only .WEBM] | [Only .WEBP] | [Composited .MP4 Only]
+      • Individual Toggles: .MOV (Camtasia RGBA), .WEBM (VP9 Alpha), .WEBP (Animated Transparent), .MP4 (Composited)
   - Bulk Folder Upload & In-Place Output Saving
-  - Smart Resume (Automatically skips already-completed valid outputs so zero resources are wasted)
-  - Sub-Pixel Matte Choke & Outward Interior Color Propagation (Zero Green Screen Outline, Buttery-Smooth Edges)
+  - Smart Resume (Per-Selected-Format verification so zero resources are wasted)
+  - 100% Untouched Interior + Zero-Outline Outer-Ring Keying
   - 100% Silent Background Subprocesses (Zero Terminal / Console Popups)
-  - Per-Video Adaptive Green Screen Calibration
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ import numpy as np
 from PIL import Image, ImageTk
 
 from keyer_engine import (
+    ENGINE_VERSION,
     KeyerConfig,
     StudioGreenScreenKeyer,
     VideoGreenProfile,
@@ -34,9 +38,9 @@ from keyer_engine import (
 class GreenScreenApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Studio Green Screen Remover — Zero-Outline + Smart Resume + Bulk Folder")
-        self.geometry("1260x850")
-        self.minsize(1080, 770)
+        self.title(f"KeenScreen Studio V2 ({ENGINE_VERSION}) — High-Speed Green Screen Remover & Compositor")
+        self.geometry("1280x880")
+        self.minsize(1100, 800)
         self.configure(bg="#141820")
 
         self.input_path_var = tk.StringVar()
@@ -44,8 +48,11 @@ class GreenScreenApp(tk.Tk):
         self.recursive_var = tk.BooleanVar(value=False)
         self.skip_completed_var = tk.BooleanVar(value=True)
 
+        # Output format variables
+        self.quick_format_var = tk.StringVar(value="both")
         self.export_mov_var = tk.BooleanVar(value=True)
         self.export_webm_var = tk.BooleanVar(value=True)
+        self.export_webp_var = tk.BooleanVar(value=False)
         self.export_mp4_var = tk.BooleanVar(value=False)
 
         self.auto_adapt_var = tk.BooleanVar(value=True)
@@ -56,7 +63,7 @@ class GreenScreenApp(tk.Tk):
         self.frame_slider_var = tk.IntVar(value=0)
         self.profile_info_var = tk.StringVar(value="Auto-Calibrated Green: Waiting for video...")
         self.status_var = tk.StringVar(
-            value="Ready. Zero-Outline Choke + Smart Resume ON (100% silent background processing)."
+            value=f"Ready — V2 Turbo Engine ({os.cpu_count() or 4} CPU Threads) | 100% Untouched Interior + Smart Resume ON."
         )
 
         self.video_queue: List[Path] = []
@@ -82,7 +89,7 @@ class GreenScreenApp(tk.Tk):
         style.configure("TLabel", background="#1e2430", foreground="#e6edf3", font=("Segoe UI", 10))
         style.configure("Header.TLabel", background="#141820", foreground="#58a6ff", font=("Segoe UI", 14, "bold"))
         style.configure("TCheckbutton", background="#1e2430", foreground="#e6edf3", font=("Segoe UI", 10))
-        style.configure("TRadiobutton", background="#1e2430", foreground="#e6edf3", font=("Segoe UI", 10))
+        style.configure("TRadiobutton", background="#1e2430", foreground="#e6edf3", font=("Segoe UI", 9))
         style.configure("Accent.TButton", background="#238636", foreground="#ffffff", font=("Segoe UI", 11, "bold"))
         style.map("Accent.TButton", background=[("active", "#2ea043")])
 
@@ -90,14 +97,14 @@ class GreenScreenApp(tk.Tk):
         header_frame.pack(fill=tk.X, padx=16, pady=(10, 4))
         ttk.Label(
             header_frame,
-            text="Automatic Studio Green Screen Remover — Zero-Outline & Smart Resume (.MOV + .WEBM)",
+            text=f"KeenScreen Studio V2 ({ENGINE_VERSION}) — Multi-Core Fast Keyer (.MOV / .WEBM / .WEBP / .MP4)",
             style="Header.TLabel",
         ).pack(side=tk.LEFT)
 
         body = ttk.Frame(self)
         body.pack(fill=tk.BOTH, expand=True, padx=16, pady=6)
 
-        left_panel = ttk.Frame(body, style="Card.TFrame", width=460)
+        left_panel = ttk.Frame(body, style="Card.TFrame", width=480)
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 12), ipadx=12, ipady=8)
         left_panel.pack_propagate(False)
 
@@ -159,27 +166,53 @@ class GreenScreenApp(tk.Tk):
         q_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.queue_listbox.configure(yscrollcommand=q_scroll.set)
 
-        # 2. Output Formats
-        ttk.Label(left_panel, text="2. Output Formats (Saved in Video's Folder)", font=("Segoe UI", 10, "bold")).pack(
-            anchor="w", padx=12, pady=(8, 2)
-        )
+        # 2. Flexible Output Format Selection
+        ttk.Label(
+            left_panel,
+            text="2. Select Output Format(s) (Quick Preset or Custom Checkboxes)",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="w", padx=12, pady=(8, 2))
+
+        preset_row = ttk.Frame(left_panel, style="Card.TFrame")
+        preset_row.pack(fill=tk.X, padx=14, pady=(0, 3))
+        for lbl, val in [
+            ("Both (.MOV+.WEBM)", "both"),
+            ("Only .MOV", "mov_only"),
+            ("Only .WEBM", "webm_only"),
+            ("Only .WEBP", "webp_only"),
+            ("Only .MP4", "mp4_only"),
+        ]:
+            ttk.Radiobutton(
+                preset_row,
+                text=lbl,
+                value=val,
+                variable=self.quick_format_var,
+                command=self._on_quick_format_selected,
+            ).pack(side=tk.LEFT, padx=(0, 6))
+
         ttk.Checkbutton(
             left_panel,
-            text="Transparent .MOV (QuickTime PNG RGBA — For Camtasia)",
+            text="Transparent .MOV (QuickTime PNG RGBA — Fast Lossless for Camtasia)",
             variable=self.export_mov_var,
-            command=self._refresh_queue_badges,
+            command=self._on_custom_format_checked,
         ).pack(anchor="w", padx=16, pady=1)
         ttk.Checkbutton(
             left_panel,
-            text="Transparent .WEBM (VP9 Alpha — For Web / HTML5 / OBS)",
+            text="Transparent .WEBM (VP9 Alpha — Fast Realtime for Web / OBS)",
             variable=self.export_webm_var,
-            command=self._refresh_queue_badges,
+            command=self._on_custom_format_checked,
         ).pack(anchor="w", padx=16, pady=1)
         ttk.Checkbutton(
             left_panel,
-            text="Composited .MP4 (Over Static Image or Dynamic Video)",
+            text="Transparent .WEBP (Animated Transparent WebP)",
+            variable=self.export_webp_var,
+            command=self._on_custom_format_checked,
+        ).pack(anchor="w", padx=16, pady=1)
+        ttk.Checkbutton(
+            left_panel,
+            text="Composited .MP4 (Over Static Image, Dynamic Video, or Studio BG)",
             variable=self.export_mp4_var,
-            command=self._refresh_queue_badges,
+            command=self._on_custom_format_checked,
         ).pack(anchor="w", padx=16, pady=1)
 
         # 3. Optional Background Image / Video
@@ -187,7 +220,7 @@ class GreenScreenApp(tk.Tk):
             left_panel,
             text="3. Optional Background Image/Video (for .MP4 or Preview)",
             font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w", padx=12, pady=(8, 2))
+        ).pack(anchor="w", padx=12, pady=(6, 2))
         bg_row = ttk.Frame(left_panel, style="Card.TFrame")
         bg_row.pack(fill=tk.X, padx=12, pady=2)
         bg_entry = ttk.Entry(bg_row, textvariable=self.bg_source_var)
@@ -199,7 +232,7 @@ class GreenScreenApp(tk.Tk):
             left_panel,
             text="4. Per-Video Adaptive Green & Outline Choke",
             font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w", padx=12, pady=(8, 2))
+        ).pack(anchor="w", padx=12, pady=(6, 2))
 
         ttk.Checkbutton(
             left_panel,
@@ -224,7 +257,7 @@ class GreenScreenApp(tk.Tk):
             variable=self.choke_var,
             command=lambda _: self._update_preview(),
         )
-        self.choke_scale.pack(fill=tk.X, padx=16, pady=(1, 4))
+        self.choke_scale.pack(fill=tk.X, padx=16, pady=(1, 3))
 
         ttk.Label(left_panel, text="Background Green Floor (Auto-Scaled per video):").pack(anchor="w", padx=16)
         self.floor_scale = ttk.Scale(
@@ -234,7 +267,7 @@ class GreenScreenApp(tk.Tk):
             variable=self.bg_floor_var,
             command=lambda _: self._update_preview(),
         )
-        self.floor_scale.pack(fill=tk.X, padx=16, pady=(1, 4))
+        self.floor_scale.pack(fill=tk.X, padx=16, pady=(1, 3))
 
         ttk.Label(left_panel, text="Green Spill Suppression Strength (Default: 1.0):").pack(anchor="w", padx=16)
         self.despill_scale = ttk.Scale(
@@ -244,14 +277,14 @@ class GreenScreenApp(tk.Tk):
             variable=self.despill_var,
             command=lambda _: self._update_preview(),
         )
-        self.despill_scale.pack(fill=tk.X, padx=16, pady=(1, 4))
+        self.despill_scale.pack(fill=tk.X, padx=16, pady=(1, 3))
 
         # 5. Action Buttons + Progress Bar
         action_row = ttk.Frame(left_panel, style="Card.TFrame")
         action_row.pack(fill=tk.X, padx=12, pady=(6, 4))
         self.run_btn = ttk.Button(
             action_row,
-            text="Start / Resume Processing (.MOV + .WEBM)",
+            text="Start / Resume Turbo Processing",
             style="Accent.TButton",
             command=self._start_processing,
         )
@@ -275,7 +308,7 @@ class GreenScreenApp(tk.Tk):
         # --- RIGHT PANEL ---
         preview_top = ttk.Frame(right_panel, style="Card.TFrame")
         preview_top.pack(fill=tk.X, padx=10, pady=(6, 4))
-        ttk.Label(preview_top, text="Live Zero-Outline Matte Preview", font=("Segoe UI", 11, "bold")).pack(
+        ttk.Label(preview_top, text="Live Zero-Outline Matte Preview (V2 Turbo)", font=("Segoe UI", 11, "bold")).pack(
             side=tk.LEFT
         )
         self.frame_info_lbl = ttk.Label(preview_top, text="Frame: 0 / 0")
@@ -318,6 +351,50 @@ class GreenScreenApp(tk.Tk):
         status_bar.pack(fill=tk.X, padx=16, pady=(2, 10))
         ttk.Label(status_bar, textvariable=self.status_var).pack(anchor="w", padx=10, pady=6)
 
+    def _on_quick_format_selected(self) -> None:
+        preset = self.quick_format_var.get()
+        if preset == "both":
+            self.export_mov_var.set(True)
+            self.export_webm_var.set(True)
+            self.export_webp_var.set(False)
+        elif preset == "mov_only":
+            self.export_mov_var.set(True)
+            self.export_webm_var.set(False)
+            self.export_webp_var.set(False)
+        elif preset == "webm_only":
+            self.export_mov_var.set(False)
+            self.export_webm_var.set(True)
+            self.export_webp_var.set(False)
+        elif preset == "webp_only":
+            self.export_mov_var.set(False)
+            self.export_webm_var.set(False)
+            self.export_webp_var.set(True)
+        elif preset == "mp4_only":
+            self.export_mov_var.set(False)
+            self.export_webm_var.set(False)
+            self.export_webp_var.set(False)
+            self.export_mp4_var.set(True)
+        self._refresh_queue_badges()
+
+    def _on_custom_format_checked(self) -> None:
+        mov = bool(self.export_mov_var.get())
+        webm = bool(self.export_webm_var.get())
+        webp = bool(self.export_webp_var.get())
+        mp4 = bool(self.export_mp4_var.get())
+        if mov and webm and not webp:
+            self.quick_format_var.set("both")
+        elif mov and not webm and not webp and not mp4:
+            self.quick_format_var.set("mov_only")
+        elif webm and not mov and not webp and not mp4:
+            self.quick_format_var.set("webm_only")
+        elif webp and not mov and not webm and not mp4:
+            self.quick_format_var.set("webp_only")
+        elif mp4 and not mov and not webm and not webp:
+            self.quick_format_var.set("mp4_only")
+        else:
+            self.quick_format_var.set("custom")
+        self._refresh_queue_badges()
+
     def _refresh_queue_badges(self) -> None:
         sel = self.queue_listbox.curselection()
         sel_idx = int(sel[0]) if sel else 0
@@ -329,6 +406,7 @@ class GreenScreenApp(tk.Tk):
                 export_mov=bool(self.export_mov_var.get()),
                 export_webm=bool(self.export_webm_var.get()),
                 export_mp4=bool(self.export_mp4_var.get()),
+                export_webp=bool(self.export_webp_var.get()),
             )
             if done:
                 done_count += 1
@@ -355,6 +433,7 @@ class GreenScreenApp(tk.Tk):
                     export_mov=bool(self.export_mov_var.get()),
                     export_webm=bool(self.export_webm_var.get()),
                     export_mp4=bool(self.export_mp4_var.get()),
+                    export_webp=bool(self.export_webp_var.get()),
                 )
             )
             if len(videos) > 1:
@@ -362,7 +441,7 @@ class GreenScreenApp(tk.Tk):
                     f"Bulk Mode: {len(videos)} videos found ({done_c} already completed, {len(videos)-done_c} pending)."
                 )
             else:
-                self.status_var.set(f"Loaded '{videos[0].name}'. Ready to process.")
+                self.status_var.set(f"Loaded '{videos[0].name}'. Ready for V2 Turbo processing.")
         else:
             self.status_var.set("No source videos found in selected location.")
 
@@ -412,7 +491,7 @@ class GreenScreenApp(tk.Tk):
             self.bg_source_var.set(path)
             self.export_mp4_var.set(True)
             self.preview_mode_var.set("custom")
-            self._refresh_queue_badges()
+            self._on_custom_format_checked()
             self._update_preview()
 
     def _load_video_metadata(self, video_path: Path) -> None:
@@ -546,8 +625,16 @@ class GreenScreenApp(tk.Tk):
             messagebox.showerror("No Videos Found", "Please select a valid video file or a folder containing videos.")
             return
 
-        if not (self.export_mov_var.get() or self.export_webm_var.get() or self.export_mp4_var.get()):
-            messagebox.showwarning("No Output Selected", "Please select at least one output format (.MOV, .WEBM, or .MP4).")
+        if not (
+            self.export_mov_var.get()
+            or self.export_webm_var.get()
+            or self.export_webp_var.get()
+            or self.export_mp4_var.get()
+        ):
+            messagebox.showwarning(
+                "No Output Selected",
+                "Please select at least one output format (.MOV, .WEBM, .WEBP, or .MP4).",
+            )
             return
 
         self.is_processing = True
@@ -583,6 +670,7 @@ class GreenScreenApp(tk.Tk):
                 out_dir = in_path.parent
                 out_mov = (out_dir / f"{stem}_transparent.mov") if self.export_mov_var.get() else None
                 out_webm = (out_dir / f"{stem}_transparent.webm") if self.export_webm_var.get() else None
+                out_webp = (out_dir / f"{stem}_transparent.webp") if self.export_webp_var.get() else None
                 out_mp4 = (out_dir / f"{stem}_composited.mp4") if self.export_mp4_var.get() else None
 
                 if cfg.skip_completed and is_video_fully_completed(
@@ -590,6 +678,7 @@ class GreenScreenApp(tk.Tk):
                     export_mov=bool(out_mov),
                     export_webm=bool(out_webm),
                     export_mp4=bool(out_mp4),
+                    export_webp=bool(out_webp),
                     out_dir=out_dir,
                 ):
                     skipped_count += 1
@@ -599,18 +688,16 @@ class GreenScreenApp(tk.Tk):
                         lambda pct=overall_pct, vn=in_path.name, vi=v_idx: (
                             self.progress.configure(value=pct),
                             self.status_var.set(
-                                f"[{vi}/{total_vids}] Skipped '{vn}' (Already completed & verified)"
+                                f"[{vi}/{total_vids}] Skipped '{vn}' (Selected format(s) already completed)"
                             ),
                         ),
                     )
                     continue
 
                 current_hex = ["#15F120"]
-                current_floor = [44.0]
 
                 def on_prof(prof: VideoGreenProfile) -> None:
                     current_hex[0] = prof.bg_rgb_hex
-                    current_floor[0] = prof.adapted_bg_floor
                     self.after(
                         0,
                         lambda: (
@@ -631,7 +718,7 @@ class GreenScreenApp(tk.Tk):
                         lambda: (
                             self.progress.configure(value=overall_pct),
                             self.status_var.set(
-                                f"[Video {v_i}/{total_vids}: {v_name}] Frame {idx}/{total} ({video_pct*100:.1f}%) "
+                                f"[V2 Turbo {v_i}/{total_vids}: {v_name}] Frame {idx}/{total} ({video_pct*100:.1f}%) "
                                 f"| Green {current_hex[0]} | {fps:.1f} fps | ETA: {eta:.1f}s"
                             ),
                         ),
@@ -643,6 +730,7 @@ class GreenScreenApp(tk.Tk):
                         output_mov=out_mov,
                         output_webm=out_webm,
                         output_composite_mp4=out_mp4,
+                        output_webp=out_webp,
                         background_source=bg_src,
                         config=cfg,
                         progress_callback=on_prog,
@@ -683,10 +771,10 @@ class GreenScreenApp(tk.Tk):
                 )
             else:
                 msg = (
-                    f"Batch Complete!\n\n"
+                    f"V2 Turbo Batch Complete!\n\n"
                     f"• Newly Processed: {processed_count} video(s)\n"
                     f"• Skipped (Already Completed): {skipped_count} video(s)\n\n"
-                    f"All .MOV and .WEBM files are saved in each video's folder."
+                    f"All selected output files are saved in each video's folder."
                 )
                 self.after(
                     0,

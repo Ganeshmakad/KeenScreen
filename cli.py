@@ -1,22 +1,18 @@
 """
-Automatic Green Screen Remover & Background Compositor — Full-Featured Command Line Interface (CLI)
-Provides 100% Control & Settings Parity with the Desktop GUI (`app_gui.py`):
+KeenScreen Studio Green Screen Remover & Compositor — VERSION 2.0 (High-Speed Turbo CLI & CMD Control Center)
+Provides 100% Control & Settings Parity with the V2 Desktop GUI (`app_gui.py`):
   - Mode 1: Interactive CMD Control Center (Menu Dashboard) — launched when run with no arguments or `--menu`
   - Mode 2: Direct One-Line Command Flags — for scripting, automation, or quick terminal runs
 
-Exact Controls Included (Matching GUI 1-to-1):
-  1. Single Video or Bulk Folder Selection (supports Drag-and-Drop paths + Native Windows File/Folder Browse Dialogs)
-  2. Include Subfolders (`Recursive: ON/OFF`)
-  3. Smart Resume: Skip already-completed valid videos (`ON/OFF`)
-  4. Queue Inspector with `[DONE]` / `[PENDING]` verification badges
-  5. Output Format Toggles: Transparent `.MOV` (Camtasia PNG RGBA), Transparent `.WEBM` (VP9 Alpha), Composited `.MP4`
-  6. Optional Background Image (`.png`/`.jpg`) or Dynamic Video (`.mp4`) for `.MP4` compositing & preview
-  7. Per-Video Auto-Adapt Green Screen Calibration (`ON/OFF`) + Live Green Profile Readout (`#HEX`, `RGB`, `Luma`, `Floor`)
-  8. Outline Choke (`0.0 - 2.5px`, default `1.25px`), Background Green Floor (`20.0 - 90.0`), Green Spill Suppression (`0.0 - 1.0`),
-     plus Advanced Matte Tuning (`FG Ceiling`, `Edge Smoothness`, `Alpha Power`)
-  9. Live Frame Preview & Scrubbing (5 Background Modes: `Checkerboard`, `Dark Studio`, `Pure White`, `Original Green`, `Custom BG`)
- 10. Start / Resume Processing with Safe `Ctrl+C` Stop (cleans up `.tmp_part` files while preserving completed videos)
- 11. Open Active Video / Output Folder in Windows Explorer
+What's New in Version 2.0 CLI:
+  - V2 High-Speed Turbo Engine (Sparse Edge-Band Keying + Multi-Core Worker Pool + Fast Lossless FFmpeg)
+  - Quick Output Format Preset Selector (`[F]`):
+      1. Both `.MOV` + `.WEBM`
+      2. Only `.MOV` (Camtasia Transparent RGBA)
+      3. Only `.WEBM` (Web Transparent VP9 Alpha)
+      4. Only `.WEBP` (Animated Transparent WebP)
+      5. Only `.MP4` (Composited H.264)
+  - Individual `[ON / OFF]` Toggles for `.MOV`, `.WEBM`, `.WEBP`, and `.MP4`
 """
 
 from __future__ import annotations
@@ -26,12 +22,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import cv2
 import numpy as np
 
 from keyer_engine import (
+    ENGINE_VERSION,
     KeyerConfig,
     StudioGreenScreenKeyer,
     VideoGreenProfile,
@@ -50,7 +47,6 @@ C_CYAN = "\033[96m"
 C_GREEN = "\033[92m"
 C_YELLOW = "\033[93m"
 C_RED = "\033[91m"
-C_BLUE = "\033[94m"
 C_DIM = "\033[90m"
 
 
@@ -59,7 +55,6 @@ def _badge_on_off(val: bool) -> str:
 
 
 def _clean_path_input(raw: str) -> str:
-    """Strips surrounding quotes and whitespace from drag-and-dropped CMD paths."""
     s = raw.strip()
     if len(s) >= 2 and ((s[0] == '"' and s[-1] == '"') or (s[0] == "'" and s[-1] == "'")):
         s = s[1:-1].strip()
@@ -67,7 +62,6 @@ def _clean_path_input(raw: str) -> str:
 
 
 def _native_browse_file(title: str, filetypes: list[tuple[str, str]]) -> Optional[Path]:
-    """Opens the native Windows File Open dialog from CMD."""
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -85,7 +79,6 @@ def _native_browse_file(title: str, filetypes: list[tuple[str, str]]) -> Optiona
 
 
 def _native_browse_folder(title: str) -> Optional[Path]:
-    """Opens the native Windows Folder Picker dialog from CMD."""
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -120,7 +113,6 @@ def render_preview_frame_bgr(
     mode: str = "checker",
     bg_source: Optional[str] = None,
 ) -> tuple[np.ndarray, VideoGreenProfile]:
-    """Renders a single preview frame in one of the 5 GUI preview modes."""
     keyer = StudioGreenScreenKeyer(config=cfg)
     prof = keyer.auto_calibrate_from_frame(frame_bgr)
 
@@ -162,10 +154,6 @@ def run_interactive_opencv_preview(
     bg_source: Optional[str] = None,
     initial_frame: int = 0,
 ) -> None:
-    """
-    Opens an interactive window with a Frame Scrub Trackbar and keys 1-5 to switch
-    Preview Background Modes (1: Checkerboard, 2: Dark Studio, 3: Pure White, 4: Original Green, 5: Custom BG).
-    """
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         print(f"  {C_RED}[Error] Cannot open video for preview: {video_path}{C_RESET}")
@@ -174,7 +162,7 @@ def run_interactive_opencv_preview(
     total_frames = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
     cur_frame_idx = [max(0, min(initial_frame, total_frames - 1))]
     cur_mode = [initial_mode]
-    win_name = f"KeenScreen Live Preview - {video_path.name} (Keys 1-5: BG Mode | ESC/Q: Close)"
+    win_name = f"KeenScreen V2 Live Preview - {video_path.name} (Keys 1-5: BG Mode | ESC/Q: Close)"
 
     print(f"\n  {C_CYAN}Opening Interactive Preview Window...{C_RESET}")
     print("  Controls inside Preview Window:")
@@ -271,6 +259,7 @@ def process_single_file(
     export_mov: bool = True,
     export_webm: bool = True,
     export_mp4: bool = False,
+    export_webp: bool = False,
     bg_source: str | None = None,
     config: KeyerConfig | None = None,
     batch_index: int | None = None,
@@ -281,28 +270,36 @@ def process_single_file(
     stem = video_path.stem
     out_mov = (target_dir / f"{stem}_transparent.mov") if export_mov else None
     out_webm = (target_dir / f"{stem}_transparent.webm") if export_webm else None
+    out_webp = (target_dir / f"{stem}_transparent.webp") if export_webp else None
     out_mp4 = (target_dir / f"{stem}_composited.mp4") if (export_mp4 or bg_source) else None
 
     prefix = f"[{batch_index}/{batch_total}] " if (batch_index and batch_total) else ""
     cfg = config or KeyerConfig()
 
     if cfg.skip_completed and is_video_fully_completed(
-        video_path, export_mov=export_mov, export_webm=export_webm, export_mp4=bool(out_mp4), out_dir=target_dir
+        video_path,
+        export_mov=export_mov,
+        export_webm=export_webm,
+        export_mp4=bool(out_mp4),
+        export_webp=export_webp,
+        out_dir=target_dir,
     ):
-        print(f"{C_GREEN}{prefix}SKIPPED (Already Completed & Verified): {video_path.name}{C_RESET}")
+        print(f"{C_GREEN}{prefix}SKIPPED (Selected Outputs Already Completed & Verified): {video_path.name}{C_RESET}")
         return {"skipped": True}
 
     print(f"\n{C_CYAN}======================================================================{C_RESET}")
-    print(f"{C_BOLD}{prefix}Processing Video : {video_path.name}{C_RESET}")
+    print(f"{C_BOLD}{prefix}V2 Turbo Processing : {video_path.name}{C_RESET}")
     print(f"  Source Folder   : {video_path.parent}")
     print(
         f"  Keyer Settings  : Auto-Adapt={'ON' if cfg.auto_adapt else 'OFF'} | "
         f"Choke={cfg.matte_choke_px:.2f}px | Floor={cfg.bg_excess_floor:.1f} | Despill={cfg.despill_strength:.2f}"
     )
     if out_mov:
-        print(f"  -> Camtasia MOV : {out_mov.name} (QuickTime PNG RGBA + AAC Audio)")
+        print(f"  -> Camtasia MOV : {out_mov.name} (Fast Lossless PNG RGBA + AAC Audio)")
     if out_webm:
-        print(f"  -> Web VP9 WebM : {out_webm.name} (VP9 yuva420p Alpha + Opus Audio)")
+        print(f"  -> Web VP9 WebM : {out_webm.name} (Fast VP9 yuva420p Alpha + Opus Audio)")
+    if out_webp:
+        print(f"  -> Anim WebP    : {out_webp.name} (Animated Transparent WebP)")
     if out_mp4:
         bg_desc = Path(bg_source).name if bg_source else "Studio Dark Gradient"
         print(f"  -> Composite MP4: {out_mp4.name} (Background: {bg_desc})")
@@ -313,6 +310,7 @@ def process_single_file(
         output_mov=out_mov,
         output_webm=out_webm,
         output_composite_mp4=out_mp4,
+        output_webp=out_webp,
         background_source=bg_source,
         config=cfg,
         progress_callback=_print_progress,
@@ -331,7 +329,7 @@ def process_single_file(
 
 class InteractiveCLISession:
     """
-    Interactive CMD Dashboard mirroring 100% of the Desktop GUI (`app_gui.py`) controls.
+    Version 2.0 Interactive CMD Dashboard mirroring 100% of the V2 Desktop GUI (`app_gui.py`) controls.
     """
 
     def __init__(self) -> None:
@@ -342,6 +340,7 @@ class InteractiveCLISession:
 
         self.export_mov: bool = True
         self.export_webm: bool = True
+        self.export_webp: bool = False
         self.export_mp4: bool = False
         self.bg_source: Optional[str] = None
         self.custom_out_dir: Optional[Path] = None
@@ -425,10 +424,23 @@ class InteractiveCLISession:
                 export_mov=self.export_mov,
                 export_webm=self.export_webm,
                 export_mp4=self.export_mp4 or bool(self.bg_source),
+                export_webp=self.export_webp,
                 out_dir=self.custom_out_dir,
             ):
                 done_c += 1
         return total, done_c, total - done_c
+
+    def _active_formats_summary(self) -> str:
+        fmts = []
+        if self.export_mov:
+            fmts.append(".MOV")
+        if self.export_webm:
+            fmts.append(".WEBM")
+        if self.export_webp:
+            fmts.append(".WEBP")
+        if self.export_mp4 or self.bg_source:
+            fmts.append(".MP4")
+        return " + ".join(fmts) if fmts else "NONE"
 
     def _render_dashboard(self) -> None:
         total, done_c, pend_c = self._queue_counts()
@@ -450,7 +462,7 @@ class InteractiveCLISession:
         bg_str = self.bg_source if self.bg_source else "None (Transparent / Dark Studio Gradient)"
 
         print(f"\n{C_CYAN}======================================================================================{C_RESET}")
-        print(f"{C_BOLD}   KEENSCREEN STUDIO GREEN SCREEN REMOVER - INTERACTIVE CMD CONTROL CENTER (.MOV + .WEBM){C_RESET}")
+        print(f"{C_BOLD}   KEENSCREEN STUDIO V2 ({ENGINE_VERSION}) - INTERACTIVE CMD CONTROL CENTER{C_RESET}")
         print(f"{C_CYAN}======================================================================================{C_RESET}")
         print(f" {C_BOLD}1. Input & Bulk Queue Controls{C_RESET}")
         print(f"    [1] Select Single Video Path / Browse  : {C_YELLOW}{self.input_display}{C_RESET}")
@@ -458,9 +470,11 @@ class InteractiveCLISession:
         print(f"    [3] Include Subfolders (Recursive)     : {_badge_on_off(self.recursive)}")
         print(f"    [4] Smart Resume (Skip Completed)      : {_badge_on_off(self.skip_completed)}")
         print(f"    [5] Inspect / Switch Queued Video      : Active -> {C_CYAN}{act_name}{C_RESET} (Frame {self.preview_frame_idx}/{self.total_frames})")
-        print(f" {C_BOLD}2. Output Formats ({out_dir_str}){C_RESET}")
+        print(f" {C_BOLD}2. Select Output Format(s) — Active: [{C_GREEN}{self._active_formats_summary()}{C_RESET}{C_BOLD}] ({out_dir_str}){C_RESET}")
+        print(f"    [F] Quick Format Preset Selector       : Choose [Only .MOV | Only .WEBM | Only .WEBP | Both | Only .MP4]")
         print(f"    [6] Transparent .MOV (Camtasia RGBA)   : {_badge_on_off(self.export_mov)}")
         print(f"    [7] Transparent .WEBM (Web VP9 Alpha)  : {_badge_on_off(self.export_webm)}")
+        print(f"    [W] Transparent .WEBP (Animated WebP)  : {_badge_on_off(self.export_webp)}")
         print(f"    [8] Composited .MP4 (H.264)            : {_badge_on_off(self.export_mp4)}")
         print(f" {C_BOLD}3. Optional Background Image / Video{C_RESET}")
         print(f"    [9] Set / Browse / Clear Custom BG     : {bg_str}")
@@ -473,7 +487,7 @@ class InteractiveCLISession:
         print(f"   [14] Advanced Matte & Output Folder     : FG Ceil={self.fg_excess_ceiling:.1f} | Smooth={self.edge_smoothness:.2f} | Power={self.alpha_power:.2f}")
         print(f" {C_BOLD}5. Preview, Scrub & Execution Actions{C_RESET}")
         print(f"    [P] Live Matte Preview & Frame Scrub   : Mode={C_CYAN}{self.preview_mode.upper()}{C_RESET} (Checker/Dark/White/Original/Custom)")
-        print(f"    [S] {C_GREEN}{C_BOLD}START / RESUME PROCESSING{C_RESET}          : Process {total} queued video(s) (Ctrl+C = Stop Safely)")
+        print(f"    [S] {C_GREEN}{C_BOLD}START / RESUME TURBO PROCESSING{C_RESET}    : Process {total} queued video(s) (Ctrl+C = Stop Safely)")
         print(f"    [O] Open Video Folder in Explorer      [Q] Quit")
         print(f"{C_CYAN}--------------------------------------------------------------------------------------{C_RESET}")
 
@@ -481,7 +495,7 @@ class InteractiveCLISession:
         while True:
             self._render_dashboard()
             try:
-                choice = input(f" {C_BOLD}Select option [1-14, P, S, O, Q]: {C_RESET}").strip().upper()
+                choice = input(f" {C_BOLD}Select option [1-14, F, W, P, S, O, Q]: {C_RESET}").strip().upper()
             except (EOFError, KeyboardInterrupt):
                 print("\nExiting KeenScreen CLI.")
                 return 0
@@ -503,10 +517,14 @@ class InteractiveCLISession:
                 self.skip_completed = not self.skip_completed
             elif choice == "5":
                 self._handle_inspect_queue()
+            elif choice == "F":
+                self._handle_quick_format_preset()
             elif choice == "6":
                 self.export_mov = not self.export_mov
             elif choice == "7":
                 self.export_webm = not self.export_webm
+            elif choice == "W":
+                self.export_webp = not self.export_webp
             elif choice == "8":
                 self.export_mp4 = not self.export_mp4
             elif choice == "9":
@@ -538,7 +556,29 @@ class InteractiveCLISession:
                 _open_in_explorer(target)
                 print(f"  {C_GREEN}Opened folder in Windows Explorer.{C_RESET}")
             else:
-                print(f"  {C_YELLOW}Unrecognized option '{choice}'. Please choose from [1-14, P, S, O, Q].{C_RESET}")
+                print(f"  {C_YELLOW}Unrecognized option '{choice}'. Please choose from [1-14, F, W, P, S, O, Q].{C_RESET}")
+
+    def _handle_quick_format_preset(self) -> None:
+        print(f"\n  {C_BOLD}Quick Output Format Presets:{C_RESET}")
+        print("    [1] Both .MOV + .WEBM (Camtasia + Web)")
+        print("    [2] Only .MOV         (Fastest for Camtasia Transparent RGBA)")
+        print("    [3] Only .WEBM        (Fastest for Web VP9 Alpha)")
+        print("    [4] Only .WEBP        (Animated Transparent WebP)")
+        print("    [5] Only .MP4         (Composited H.264 Over Custom/Studio Background)")
+        print("    [6] All (.MOV + .WEBM + .MP4)")
+        p = input("  Choose preset [1-6] (or Enter to cancel): ").strip()
+        if p == "1":
+            self.export_mov, self.export_webm, self.export_webp, self.export_mp4 = True, True, False, False
+        elif p == "2":
+            self.export_mov, self.export_webm, self.export_webp, self.export_mp4 = True, False, False, False
+        elif p == "3":
+            self.export_mov, self.export_webm, self.export_webp, self.export_mp4 = False, True, False, False
+        elif p == "4":
+            self.export_mov, self.export_webm, self.export_webp, self.export_mp4 = False, False, True, False
+        elif p == "5":
+            self.export_mov, self.export_webm, self.export_webp, self.export_mp4 = False, False, False, True
+        elif p == "6":
+            self.export_mov, self.export_webm, self.export_webp, self.export_mp4 = True, True, False, True
 
     def _handle_select_single_video(self) -> None:
         raw = input(
@@ -589,6 +629,7 @@ class InteractiveCLISession:
                 export_mov=self.export_mov,
                 export_webm=self.export_webm,
                 export_mp4=self.export_mp4 or bool(self.bg_source),
+                export_webp=self.export_webp,
                 out_dir=self.custom_out_dir,
             )
             badge = f"{C_GREEN}[DONE]   {C_RESET}" if done else f"{C_YELLOW}[PENDING]{C_RESET}"
@@ -728,8 +769,8 @@ class InteractiveCLISession:
         if not self.video_queue:
             print(f"  {C_RED}[Error] No videos in queue. Please select a video or folder first.{C_RESET}")
             return
-        if not (self.export_mov or self.export_webm or self.export_mp4 or self.bg_source):
-            print(f"  {C_RED}[Error] Please enable at least one output format (.MOV, .WEBM, or .MP4).{C_RESET}")
+        if not (self.export_mov or self.export_webm or self.export_webp or self.export_mp4 or self.bg_source):
+            print(f"  {C_RED}[Error] Please enable at least one output format (.MOV, .WEBM, .WEBP, or .MP4).{C_RESET}")
             return
 
         cfg = self.build_config()
@@ -739,7 +780,7 @@ class InteractiveCLISession:
         failed_list: List[str] = []
         stop_requested = [False]
 
-        print(f"\n{C_GREEN}{C_BOLD}>>> Starting Batch Processing ({total} video(s) in queue)...{C_RESET}")
+        print(f"\n{C_GREEN}{C_BOLD}>>> Starting V2 Turbo Batch Processing ({total} video(s) | Outputs: {self._active_formats_summary()})...{C_RESET}")
         print(f"    Press {C_YELLOW}Ctrl+C{C_RESET} at any time to Stop Safely (preserves all completed videos).\n")
 
         for idx, v in enumerate(self.video_queue, start=1):
@@ -752,6 +793,7 @@ class InteractiveCLISession:
                     export_mov=self.export_mov,
                     export_webm=self.export_webm,
                     export_mp4=self.export_mp4,
+                    export_webp=self.export_webp,
                     bg_source=self.bg_source,
                     config=cfg,
                     batch_index=idx,
@@ -767,7 +809,7 @@ class InteractiveCLISession:
                 print(f"\n  {C_YELLOW}[Stop Safely] Interrupt received! Cleaned up temporary files for '{v.name}'.{C_RESET}")
                 break
             except Exception as exc:
-                if "cancelled safely" in str(exc).lower():
+                if "stopped safely" in str(exc).lower() or "cancelled safely" in str(exc).lower():
                     stop_requested[0] = True
                     print(f"\n  {C_YELLOW}[Stop Safely] Stopped cleanly. Completed videos are preserved.{C_RESET}")
                     break
@@ -782,7 +824,7 @@ class InteractiveCLISession:
             )
         else:
             print(
-                f"  {C_GREEN}{C_BOLD}Batch Complete!{C_RESET} Newly Processed: {processed_count} | "
+                f"  {C_GREEN}{C_BOLD}V2 Turbo Batch Complete!{C_RESET} Newly Processed: {processed_count} | "
                 f"Skipped (Already Done): {skipped_count} | Failed: {len(failed_list)}"
             )
         print(f"{C_CYAN}======================================================================{C_RESET}")
@@ -791,7 +833,7 @@ class InteractiveCLISession:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="KeenScreen Studio Green Screen Remover — Interactive CMD & Direct CLI (100% GUI Parity)"
+        description=f"KeenScreen Studio V2 ({ENGINE_VERSION}) — Interactive CMD & Direct CLI"
     )
     parser.add_argument(
         "input_pos",
@@ -813,6 +855,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="interactive",
         action="store_true",
         help="Launch the Interactive CMD Control Center dashboard",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["both", "mov", "webm", "webp", "mp4", "all"],
+        default=None,
+        help="Quick format selector: 'both' (.mov+.webm), 'mov' (only .mov), 'webm' (only .webm), 'webp' (only .webp), 'mp4' (only .mp4), or 'all'",
     )
     parser.add_argument(
         "--out-dir",
@@ -861,6 +909,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="export_webm",
         action="store_false",
         help="Disable exporting transparent .webm",
+    )
+    parser.add_argument(
+        "--webp",
+        dest="export_webp",
+        action="store_true",
+        default=False,
+        help="Export animated transparent .webp",
     )
     parser.add_argument(
         "--mp4",
@@ -973,8 +1028,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    # If launched with no arguments at all (e.g. double-clicking Launch_CLI.bat or running `python cli.py`),
-    # open the full Interactive CMD Control Center!
     if len(sys.argv) == 1:
         session = InteractiveCLISession()
         return session.run_loop()
@@ -1014,7 +1067,22 @@ def main() -> int:
 
     export_mov = args.export_mov
     export_webm = args.export_webm
+    export_webp = args.export_webp
     export_mp4 = args.export_mp4 or (args.bg is not None)
+
+    if args.format == "both":
+        export_mov, export_webm, export_webp = True, True, False
+    elif args.format == "mov":
+        export_mov, export_webm, export_webp, export_mp4 = True, False, False, False
+    elif args.format == "webm":
+        export_mov, export_webm, export_webp, export_mp4 = False, True, False, False
+    elif args.format == "webp":
+        export_mov, export_webm, export_webp, export_mp4 = False, False, True, False
+    elif args.format == "mp4":
+        export_mov, export_webm, export_webp, export_mp4 = False, False, False, True
+    elif args.format == "all":
+        export_mov, export_webm, export_mp4 = True, True, True
+
     custom_out_dir = Path(_clean_path_input(args.out_dir)).resolve() if args.out_dir else None
 
     if args.batch or input_path.is_dir():
@@ -1032,7 +1100,12 @@ def main() -> int:
         print(f"\n{C_BOLD}Queue Status for '{input_path}' ({len(videos)} video(s)):{C_RESET}")
         for idx, v in enumerate(videos, start=1):
             done = is_video_fully_completed(
-                v, export_mov=export_mov, export_webm=export_webm, export_mp4=export_mp4, out_dir=custom_out_dir
+                v,
+                export_mov=export_mov,
+                export_webm=export_webm,
+                export_mp4=export_mp4,
+                export_webp=export_webp,
+                out_dir=custom_out_dir,
             )
             if done:
                 done_c += 1
@@ -1075,7 +1148,7 @@ def main() -> int:
 
     stop_requested = [False]
     if len(videos) > 1:
-        print(f"{C_CYAN}Bulk Folder Mode: Found {len(videos)} source video(s) in '{input_path}'{C_RESET}")
+        print(f"{C_CYAN}V2 Turbo Bulk Folder Mode: Found {len(videos)} source video(s) in '{input_path}'{C_RESET}")
 
     for idx, v in enumerate(videos, start=1):
         try:
@@ -1085,6 +1158,7 @@ def main() -> int:
                 export_mov=export_mov,
                 export_webm=export_webm,
                 export_mp4=export_mp4,
+                export_webp=export_webp,
                 bg_source=args.bg,
                 config=cfg,
                 batch_index=idx if len(videos) > 1 else None,
@@ -1097,7 +1171,7 @@ def main() -> int:
             return 130
 
     if len(videos) > 1:
-        print(f"\n{C_GREEN}{C_BOLD}Bulk processing complete! All {len(videos)} video(s) verified in their respective folders.{C_RESET}")
+        print(f"\n{C_GREEN}{C_BOLD}V2 Turbo Bulk processing complete! All {len(videos)} video(s) verified in their respective folders.{C_RESET}")
 
     if args.open_folder:
         _open_in_explorer(custom_out_dir if custom_out_dir else videos[0])
